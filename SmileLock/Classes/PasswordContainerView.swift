@@ -22,9 +22,9 @@ open class PasswordContainerView: UIView {
     @IBOutlet open weak var deleteButton: UIButton!
     @IBOutlet open weak var touchAuthenticationButton: UIButton!
     
-    var passwordInputComplete: ((String) -> Void)?
-    var biometricAuthenticationComplete: ((Bool, Error?) -> Void)?
-    var passwordInputCancel: (() -> Void)?
+    open var passwordInputComplete: ((String) -> Void)?
+    open var biometricAuthenticationComplete: ((Bool, Error?) -> Void)?
+    open var passwordInputCancel: (() -> Void)?
 
     //MARK: Property
     open var deleteButtonTitle: String = "" {
