@@ -19,7 +19,7 @@ open class PasswordInputView: UIView {
     
     let circleView = UIView()
     let button = UIButton()
-    open let label = UILabel()
+    public let label = UILabel()
     open var labelFont: UIFont?
     fileprivate let fontSizeRatio: CGFloat = 46 / 40
     fileprivate let borderWidthRatio: CGFloat = 1 / 26
@@ -63,7 +63,7 @@ open class PasswordInputView: UIView {
     
     //MARK: Life Cycle
     #if TARGET_INTERFACE_BUILDER
-    override public func willMoveToSuperview(newSuperview: UIView?) {
+    override open func willMove(toSuperview newSuperview: UIView?) {
         configureSubviews()
     }
     #else

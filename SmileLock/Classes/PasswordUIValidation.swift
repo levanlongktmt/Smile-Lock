@@ -6,6 +6,7 @@
 //
 
 open class PasswordUIValidation<T>: PasswordInputCompleteProtocol {
+
     public typealias Failure    = () -> Void
     public typealias Success    = (T) -> Void
     public typealias Validation = (String) -> T?
@@ -38,5 +39,8 @@ open class PasswordUIValidation<T>: PasswordInputCompleteProtocol {
         success?(model)
     }
     
-    open func touchAuthenticationComplete(_ passwordContainerView: PasswordContainerView, success: Bool, error: Error?) {}
+    open func biometricAuthenticationComplete(_ passwordContainerView: PasswordContainerView, success: Bool, error: Error?) {}
+    
+    open func passwordInputCancel(_ passwordContainerView: PasswordContainerView) {}
+    
 }

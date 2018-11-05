@@ -10,7 +10,8 @@ import LocalAuthentication
 
 public protocol PasswordInputCompleteProtocol: class {
     func passwordInputComplete(_ passwordContainerView: PasswordContainerView, input: String)
-    func touchAuthenticationComplete(_ passwordContainerView: PasswordContainerView, success: Bool, error: Error?)
+    func biometricAuthenticationComplete(_ passwordContainerView: PasswordContainerView, success: Bool, error: Error?)
+    func passwordInputCancel(_ passwordContainerView: PasswordContainerView)
 }
 
 open class PasswordContainerView: UIView {
@@ -21,24 +22,35 @@ open class PasswordContainerView: UIView {
     @IBOutlet open weak var deleteButton: UIButton!
     @IBOutlet open weak var touchAuthenticationButton: UIButton!
     
+    var passwordInputComplete: ((String) -> Void)?
+    var biometricAuthenticationComplete: ((Bool, Error?) -> Void)?
+    var passwordInputCancel: (() -> Void)?
+
     //MARK: Property
-    open var deleteButtonLocalizedTitle: String = "" {
+    open var deleteButtonTitle: String = "" {
         didSet {
-            deleteButton.setTitle(NSLocalizedString(deleteButtonLocalizedTitle, comment: ""), for: .normal)
+            if !inputString.isEmpty {
+                deleteButton.setTitle(deleteButtonTitle, for: .normal)
+            }
+        }
+    }
+    
+    open var cancelButtonTitle: String = "" {
+        didSet {
+            if inputString.isEmpty {
+                deleteButton.setTitle(cancelButtonTitle, for: .normal)
+            }
         }
     }
     
     open weak var delegate: PasswordInputCompleteProtocol?
-    fileprivate var touchIDContext = LAContext()
+    fileprivate lazy var biometricAuthenticateContext = LAContext()
     
     fileprivate var inputString: String = "" {
         didSet {
-            #if swift(>=3.2)
-                passwordDotView.inputDotCount = inputString.count
-            #else
-                passwordDotView.inputDotCount = inputString.characters.count
-            #endif
-            
+            passwordDotView.inputDotCount = inputString.count
+            let buttonTitle = inputString.isEmpty ? cancelButtonTitle : deleteButtonTitle
+            deleteButton.setTitle(buttonTitle, for: .normal)
             checkInputComplete()
         }
     }
@@ -52,7 +64,7 @@ open class PasswordContainerView: UIView {
     open override var tintColor: UIColor! {
         didSet {
             guard !isVibrancyEffect else { return }
-            deleteButton.setTitleColor(tintColor, for: UIControlState())
+            deleteButton.setTitleColor(tintColor, for: UIControl.State())
             passwordDotView.strokeColor = tintColor
             touchAuthenticationButton.tintColor = tintColor
             passwordInputViews.forEach {
@@ -72,13 +84,13 @@ open class PasswordContainerView: UIView {
         }
     }
     
-    open var isTouchAuthenticationAvailable: Bool {
-        return touchIDContext.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    open var isBiometricAuthenticationAvailable: Bool {
+        return biometricAuthenticateContext.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
     }
     
     open var touchAuthenticationEnabled = false {
         didSet {
-            let enable = (isTouchAuthenticationAvailable && touchAuthenticationEnabled)
+            let enable = (isBiometricAuthenticationAvailable && touchAuthenticationEnabled)
             touchAuthenticationButton.alpha = enable ? 1.0 : 0.0
             touchAuthenticationButton.isUserInteractionEnabled = enable
         }
@@ -145,13 +157,13 @@ open class PasswordContainerView: UIView {
         var image = touchAuthenticationButton.imageView?.image?.withRenderingMode(.alwaysTemplate)
         
         if #available(iOS 11, *) {
-            if touchIDContext.biometryType == .faceID {
+            if biometricAuthenticateContext.biometryType == .faceID {
                 let bundle = Bundle(for: type(of: self))
                 image = UIImage(named: "faceid", in: bundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
             }
         }
         
-        touchAuthenticationButton.setImage(image, for: UIControlState())
+        touchAuthenticationButton.setImage(image, for: UIControl.State())
         touchAuthenticationButton.tintColor = tintColor
     }
     
@@ -168,17 +180,15 @@ open class PasswordContainerView: UIView {
     
     //MARK: IBAction
     @IBAction func deleteInputString(_ sender: AnyObject) {
-        #if swift(>=3.2)
-            guard inputString.count > 0 && !passwordDotView.isFull else {
-                return
-            }
-            inputString = String(inputString.dropLast())
-        #else
-            guard inputString.characters.count > 0 && !passwordDotView.isFull else {
+        guard !inputString.isEmpty else {
+            delegate?.passwordInputCancel(self)
+            self.passwordInputCancel?()
             return
-            }
-            inputString = String(inputString.characters.dropLast())
-        #endif
+        }
+        guard !passwordDotView.isFull else {
+            return
+        }
+        inputString = String(inputString.dropLast())
     }
     
     @IBAction func touchAuthenticationAction(_ sender: UIButton) {
@@ -186,18 +196,19 @@ open class PasswordContainerView: UIView {
     }
     
     open func touchAuthentication() {
-        guard isTouchAuthenticationAvailable else { return }
-        touchIDContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: touchAuthenticationReason) { (success, error) in
+        guard isBiometricAuthenticationAvailable else { return }
+        biometricAuthenticateContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: touchAuthenticationReason) { (success, error) in
             DispatchQueue.main.async {
                 if success {
                     self.passwordDotView.inputDotCount = self.passwordDotView.totalDotCount
                     // instantiate LAContext again for avoiding the situation that PasswordContainerView stay in memory when authenticate successfully
-                    self.touchIDContext = LAContext()
+                    self.biometricAuthenticateContext = LAContext()
                 }
                 
                 // delay delegate callback for the user can see passwordDotView input dots filled animation
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.delegate?.touchAuthenticationComplete(self, success: success, error: error)
+                    self.delegate?.biometricAuthenticationComplete(self, success: success, error: error)
+                    self.biometricAuthenticationComplete?(success, error)
                 }
             }
         }
@@ -206,15 +217,10 @@ open class PasswordContainerView: UIView {
 
 private extension PasswordContainerView {
     func checkInputComplete() {
-        #if swift(>=3.2)
-            if inputString.count == passwordDotView.totalDotCount {
-                delegate?.passwordInputComplete(self, input: inputString)
-            }
-        #else
-            if inputString.characters.count == passwordDotView.totalDotCount {
+        if inputString.count == passwordDotView.totalDotCount {
             delegate?.passwordInputComplete(self, input: inputString)
-            }
-        #endif
+            passwordInputComplete?(inputString)
+        }
     }
     
     func configureVibrancyEffect() {
@@ -279,16 +285,7 @@ private extension PasswordContainerView {
 
 extension PasswordContainerView: PasswordInputViewTappedProtocol {
     public func passwordInputView(_ passwordInputView: PasswordInputView, tappedString: String) {
-        #if swift(>=3.2)
-            guard inputString.count < passwordDotView.totalDotCount else {
-                return
-            }
-        #else
-            guard inputString.characters.count < passwordDotView.totalDotCount else {
-            return
-            }
-        #endif
-
+        guard inputString.count < passwordDotView.totalDotCount else { return }
         inputString += tappedString
     }
 }
